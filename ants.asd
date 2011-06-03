@@ -14,4 +14,5 @@
   :depends-on ("alexandria" "iterate")
   :serial t
   :components ((:file "package")
-	       (:file "graph")))
+	       (:file "graph")
+	       (:file "terrain")))

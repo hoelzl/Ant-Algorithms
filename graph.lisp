@@ -1,3 +1,8 @@
+;;;; -*- Mode: Lisp; Syntax: ANSI-Common-Lisp; Base: 10 -*-
+
+;;; The general graph structure without any additional slots needed
+;;; for the description of the terrain.
+
 (in-package :ants)
 
 (defparameter *current-node-number* 0)
@@ -39,6 +44,8 @@
       (setf (node-name node) node-name
 	    (gethash node-name *node-table*) node))))
 
+(defgeneric find-node (node))
+
 (defmethod find-node ((node node))
   node)
 
@@ -54,32 +61,57 @@
 
 (defclass transition ()
   ((transition-name :initarg :transition-name
-		    :accessor transition-name)
-   (start-node :initarg :start-node
-	       :accessor start-node)
-   (end-node :initarg :end-node
-	     :accessor end-node)))
-
-(defmethod print-object ((transition transition) stream)
-  (print-unreadable-object (transition stream :type t :identity t)
-    (format stream "~A => ~A"
-	    (if (slot-boundp transition 'start-node)
-		(node-name (start-node transition))
-		:unknown-node)
-	    (if (slot-boundp transition 'end-node)
-		(node-name (end-node transition))
-		:unknown-node))))
+		    :accessor transition-name)))
 
 (defvar *all-transitions* '())
 (defvar *transition-table* (make-hash-table))
 
 (defmethod shared-initialize :after ((transition transition) slot-names 
-				     &key transition-name start-node end-node)
+				     &key transition-name)
   (pushnew transition *all-transitions*)
   (when (or (eql t slot-names) (member 'transition-name slot-names))
     (let ((transition-name (or transition-name (make-transition-name))))
       (setf (transition-name transition) transition-name
-	    (gethash transition-name *transition-table*) transition)))
+	    (gethash transition-name *transition-table*) transition))))
+
+(defgeneric transition-info (transition))
+
+(defmethod transition-info ((transition transition))
+  nil)
+
+(defgeneric transition-nodes (transition))
+
+(defclass undirected-transition (transition)
+  ((transition-nodes :initarg :transition-nodes
+		     :accessor transition-nodes)))
+
+(defmethod shared-initialize :after ((transition undirected-transition) slot-names 
+				     &key transition-nodes)
+  (when (or (eql t slot-names) (member 'transition-nodes slot-names))
+    (let* ((transition-nodes (mapcar 'find-node (or transition-nodes (transition-nodes transition))))
+	   (length (length transition-nodes)))
+      (assert (<= 1 length 2) (transition-nodes) "Transition must have one or two nodes.")
+      (setf (transition-nodes transition) transition-nodes)
+      (dolist (node transition-nodes)
+	(pushnew transition (outgoing-transitions node))
+	(pushnew transition (incoming-transitions node))))))
+
+(defmethod print-object ((transition undirected-transition) stream)
+  (print-unreadable-object (transition stream :type t :identity t)
+    (let ((nodes (transition-nodes transition)))
+      (format stream "~A <=> ~A~@[ (~A)~]"
+	      (node-name (first nodes))
+	      (node-name (if (null (rest nodes)) (first nodes) (second nodes)))
+	      (transition-info transition)))))
+
+(defclass directed-transition (transition)
+  ((start-node :initarg :start-node
+	       :accessor start-node)
+   (end-node :initarg :end-node
+	     :accessor end-node)))
+
+(defmethod shared-initialize :after ((transition directed-transition) slot-names 
+				     &key start-node end-node)
   (when (or (eql t slot-names) (member 'start-node slot-names))
     (let ((start-node (find-node start-node)))
       (assert start-node (start-node) "Transitions must have a start node.")
@@ -93,6 +125,18 @@
       (pushnew transition (incoming-transitions end-node))
       (setf (end-node transition) end-node))))
 
+
+(defmethod print-object ((transition directed-transition) stream)
+  (print-unreadable-object (transition stream :type t :identity t)
+    (format stream "~A => ~A~@[ (~A)~]"
+	    (if (slot-boundp transition 'start-node)
+		(node-name (start-node transition))
+		:unknown-node)
+	    (if (slot-boundp transition 'end-node)
+		(node-name (end-node transition))
+		:unknown-node)
+	    (transition-info transition))))
+
 (defun clear-graph ()
   (setf *all-transitions* '()
 	*all-nodes* '())
@@ -101,3 +145,4 @@
   (setf *current-node-number* 0
 	*current-transition-number* 0)
   :graph-cleared)
+
