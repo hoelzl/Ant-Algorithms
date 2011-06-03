@@ -1,0 +1,7 @@
+*~
+*.fasl
+*.ofasl
+*.lx*fsl
+*.wx*fsl
+output/
+
